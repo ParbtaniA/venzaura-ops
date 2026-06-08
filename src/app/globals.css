@@ -1,0 +1,35 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body { @apply bg-zinc-950 text-zinc-100 antialiased; }
+}
+
+@layer components {
+  .card { @apply bg-zinc-900 border border-zinc-800 rounded-xl p-5; }
+  .card-sm { @apply bg-zinc-900 border border-zinc-800 rounded-lg p-4; }
+  .btn-primary { @apply bg-[#C9A84C] text-zinc-950 font-medium px-4 py-2 rounded-lg hover:bg-[#D4B86A] active:scale-95 transition-all text-sm cursor-pointer; }
+  .btn-ghost { @apply text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 px-3 py-2 rounded-lg transition-all text-sm cursor-pointer; }
+  .btn-danger { @apply bg-red-900/30 text-red-400 border border-red-800/50 px-3 py-2 rounded-lg hover:bg-red-900/50 transition-all text-sm cursor-pointer; }
+  .input { @apply bg-zinc-800 border border-zinc-700 text-zinc-100 rounded-lg px-3 py-2 text-sm placeholder:text-zinc-500 focus:outline-none focus:border-[#C9A84C] focus:ring-1 focus:ring-[#C9A84C] transition-all w-full; }
+  .select { @apply bg-zinc-800 border border-zinc-700 text-zinc-100 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#C9A84C] w-full; }
+  .label { @apply text-xs text-zinc-400 mb-1 block font-medium uppercase tracking-wide; }
+  .stat-card { @apply bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col gap-1; }
+  .stat-value { @apply text-2xl font-semibold text-zinc-100; }
+  .stat-label { @apply text-xs text-zinc-500 uppercase tracking-wide; }
+  .badge { @apply text-xs px-2 py-0.5 rounded-full font-medium; }
+  .badge-gold { @apply bg-[#C9A84C]/20 text-[#C9A84C]; }
+  .badge-green { @apply bg-emerald-900/30 text-emerald-400; }
+  .badge-blue { @apply bg-blue-900/30 text-blue-400; }
+  .badge-red { @apply bg-red-900/30 text-red-400; }
+  .badge-zinc { @apply bg-zinc-800 text-zinc-400; }
+  .table-row { @apply border-b border-zinc-800 hover:bg-zinc-800/40 transition-colors; }
+  .th { @apply text-xs text-zinc-500 uppercase tracking-wide font-medium px-4 py-3 text-left; }
+  .td { @apply text-sm text-zinc-300 px-4 py-3; }
+  .sidebar-link { @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-all; }
+  .sidebar-link-active { @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-zinc-100 bg-zinc-800; }
+  .page-title { @apply text-xl font-semibold text-zinc-100; }
+  .gold-accent { @apply text-[#C9A84C]; }
+  .divider { @apply border-t border-zinc-800 my-4; }
+}
