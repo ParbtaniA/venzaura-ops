@@ -1,7 +1,7 @@
-import { supabase } from '@/lib/supabase'
+import { createServerClient } from '@/lib/supabase'
 import VendorsClient from './VendorsClient'
 
 export default async function VendorsPage() {
-  const { data } = await supabase.from('vendors').select('*').order('created_at', { ascending: false })
+  const { data } = await createServerClient().from('vendors').select('*').order('created_at', { ascending: false })
   return <VendorsClient vendors={data || []} />
 }

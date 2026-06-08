@@ -9,7 +9,8 @@ const EMPTY_STATS: DashboardStats = {
 
 async function getDashboardData(): Promise<DashboardStats> {
   try {
-    const { supabase } = await import('@/lib/supabase')
+    const { createServerClient } = await import('@/lib/supabase')
+    const supabase = createServerClient()
     const now = new Date()
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
 
