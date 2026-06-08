@@ -18,6 +18,9 @@ export default function PaymentsClient({ payments: initial, vendors, pos }: {
   const [editing, setEditing] = useState<Partial<Payment>>(EMPTY)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Payment | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const totalOut = payments.reduce((s, p) => s + (p.total_out_usd || 0), 0)
   const pendingQBO = payments.filter(p => !p.logged_in_qbo).length
@@ -42,6 +45,17 @@ export default function PaymentsClient({ payments: initial, vendors, pos }: {
       }
       setShowForm(false); setEditing(EMPTY)
     } finally { setSaving(false) }
+  }
+
+  async function deletePayment() {
+    if (!deleteTarget) return
+    setDeleting(true); setDeleteError(null)
+    try {
+      const { error: err } = await supabase.from('payments').delete().eq('id', deleteTarget.id)
+      if (err) { setDeleteError(err.message); return }
+      setPayments(ps => ps.filter(p => p.id !== deleteTarget.id))
+      setDeleteTarget(null)
+    } finally { setDeleting(false) }
   }
 
   async function toggleQBO(id: string, logged: boolean) {
@@ -109,7 +123,11 @@ export default function PaymentsClient({ payments: initial, vendors, pos }: {
                     checked={p.logged_in_qbo} onChange={e => toggleQBO(p.id, e.target.checked)} />
                 </td>
                 <td className="td">
-                  <button className="btn-ghost text-xs py-1 px-2" onClick={() => { setEditing(p); setShowForm(true) }}>Edit</button>
+                  <div className="flex gap-1">
+                    <button className="btn-ghost text-xs py-1 px-2" onClick={() => { setEditing(p); setShowForm(true) }}>Edit</button>
+                    <button className="text-xs py-1 px-2 rounded-lg text-red-500 hover:text-red-400 hover:bg-red-900/20 transition-all"
+                      onClick={() => { setDeleteTarget(p); setDeleteError(null) }}>Delete</button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -125,6 +143,35 @@ export default function PaymentsClient({ payments: initial, vendors, pos }: {
           )}
         </table>
       </div>
+
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-md">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-red-900/40 flex items-center justify-center text-red-400 text-lg flex-shrink-0">⚠</div>
+                <div>
+                  <h2 className="text-base font-semibold text-zinc-100">Delete Payment?</h2>
+                  <p className="text-xs text-zinc-500 mt-0.5">This cannot be undone</p>
+                </div>
+              </div>
+              <div className="bg-zinc-800/60 rounded-xl p-4 mb-4 text-sm space-y-1">
+                <p><span className="text-zinc-500">Payment ID:</span> <span className="text-[#C9A84C] font-mono">{deleteTarget.payment_id}</span></p>
+                <p><span className="text-zinc-500">Vendor:</span> <span className="text-zinc-300">{(deleteTarget as any).vendor?.name || '—'}</span></p>
+                <p><span className="text-zinc-500">Amount:</span> <span className="text-zinc-300">{deleteTarget.currency} {deleteTarget.amount_foreign?.toLocaleString()} = {fmt(deleteTarget.total_out_usd)}</span></p>
+              </div>
+              {deleteError && <p className="text-xs text-red-400 mb-3">{deleteError}</p>}
+              <div className="flex gap-2 justify-end">
+                <button className="btn-ghost" onClick={() => { setDeleteTarget(null); setDeleteError(null) }} disabled={deleting}>Cancel</button>
+                <button className="px-4 py-2 rounded-lg bg-red-700 hover:bg-red-600 text-white text-sm font-medium transition-colors disabled:opacity-50"
+                  onClick={deletePayment} disabled={deleting}>
+                  {deleting ? 'Deleting...' : 'Delete Payment'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">

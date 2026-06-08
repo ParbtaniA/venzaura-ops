@@ -39,6 +39,9 @@ export default function LineItemsClient({ items: initial, pos, vendors }: {
   const [catFilter, setCatFilter] = useState<Category | 'All'>('All')
   const [search, setSearch] = useState('')
   const [priceOverridden, setPriceOverridden] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<LineItem | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   // Live-computed values derived from form inputs
   const unitCost      = Number(editing.unit_cost_foreign) || 0
@@ -57,6 +60,17 @@ export default function LineItemsClient({ items: initial, pos, vendors }: {
       setEditing(p => ({ ...p, shopify_price: autoPrice }))
     }
   }, [unitCost, fxRate, freight]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function deleteItem() {
+    if (!deleteTarget) return
+    setDeleting(true); setDeleteError(null)
+    try {
+      const { error: err } = await supabase.from('line_items').delete().eq('id', deleteTarget.id)
+      if (err) { setDeleteError(err.message); return }
+      setItems(its => its.filter(i => i.id !== deleteTarget.id))
+      setDeleteTarget(null)
+    } finally { setDeleting(false) }
+  }
 
   function openEdit(item: LineItem) {
     setEditing(item)
@@ -198,13 +212,46 @@ export default function LineItemsClient({ items: initial, pos, vendors }: {
                     : <span className="text-zinc-600 text-xs">—</span>}
                 </td>
                 <td className="td">
-                  <button className="btn-ghost text-xs py-1 px-2" onClick={() => openEdit(i)}>Edit</button>
+                  <div className="flex gap-1">
+                    <button className="btn-ghost text-xs py-1 px-2" onClick={() => openEdit(i)}>Edit</button>
+                    <button className="text-xs py-1 px-2 rounded-lg text-red-500 hover:text-red-400 hover:bg-red-900/20 transition-all"
+                      onClick={() => { setDeleteTarget(i); setDeleteError(null) }}>Delete</button>
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-md">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-red-900/40 flex items-center justify-center text-red-400 text-lg flex-shrink-0">⚠</div>
+                <div>
+                  <h2 className="text-base font-semibold text-zinc-100">Delete SKU?</h2>
+                  <p className="text-xs text-zinc-500 mt-0.5">This cannot be undone</p>
+                </div>
+              </div>
+              <div className="bg-zinc-800/60 rounded-xl p-4 mb-4 text-sm space-y-1">
+                <p><span className="text-zinc-500">SKU:</span> <span className="text-[#C9A84C] font-mono">{deleteTarget.sku}</span></p>
+                <p><span className="text-zinc-500">Product:</span> <span className="text-zinc-300">{deleteTarget.product_name}</span></p>
+                <p><span className="text-zinc-500">Category:</span> <span className="text-zinc-300">{deleteTarget.category}</span></p>
+              </div>
+              {deleteError && <p className="text-xs text-red-400 mb-3">{deleteError}</p>}
+              <div className="flex gap-2 justify-end">
+                <button className="btn-ghost" onClick={() => { setDeleteTarget(null); setDeleteError(null) }} disabled={deleting}>Cancel</button>
+                <button className="px-4 py-2 rounded-lg bg-red-700 hover:bg-red-600 text-white text-sm font-medium transition-colors disabled:opacity-50"
+                  onClick={deleteItem} disabled={deleting}>
+                  {deleting ? 'Deleting...' : 'Delete SKU'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">

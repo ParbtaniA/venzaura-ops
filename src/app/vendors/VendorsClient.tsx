@@ -13,6 +13,9 @@ export default function VendorsClient({ vendors: initial }: { vendors: Vendor[] 
   const [editing, setEditing] = useState<Partial<Vendor>>(EMPTY)
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<Vendor | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const filtered = vendors.filter(v =>
     v.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -44,6 +47,27 @@ export default function VendorsClient({ vendors: initial }: { vendors: Vendor[] 
       setShowForm(false)
       setEditing(EMPTY)
     } finally { setSaving(false) }
+  }
+
+  async function deleteVendor() {
+    if (!deleteTarget) return
+    setDeleting(true); setDeleteError(null)
+    try {
+      // Cascade: line_items → payments → purchase_orders → vendor
+      const { data: vendorPOs } = await supabase.from('purchase_orders').select('id').eq('vendor_id', deleteTarget.id)
+      if (vendorPOs?.length) {
+        for (const po of vendorPOs) {
+          await supabase.from('line_items').delete().eq('po_id', po.id)
+          await supabase.from('payments').delete().eq('po_id', po.id)
+        }
+        const { error: poErr } = await supabase.from('purchase_orders').delete().eq('vendor_id', deleteTarget.id)
+        if (poErr) { setDeleteError('Failed to delete POs: ' + poErr.message); return }
+      }
+      const { error: vErr } = await supabase.from('vendors').delete().eq('id', deleteTarget.id)
+      if (vErr) { setDeleteError('Failed to delete vendor: ' + vErr.message); return }
+      setVendors(vs => vs.filter(v => v.id !== deleteTarget.id))
+      setDeleteTarget(null)
+    } finally { setDeleting(false) }
   }
 
   async function toggleActive(id: string, active: boolean) {
@@ -110,6 +134,10 @@ export default function VendorsClient({ vendors: initial }: { vendors: Vendor[] 
                     <button className="btn-ghost text-xs py-1 px-2" onClick={() => toggleActive(v.id, !v.active)}>
                       {v.active ? 'Deactivate' : 'Activate'}
                     </button>
+                    <button className="text-xs py-1 px-2 rounded-lg text-red-500 hover:text-red-400 hover:bg-red-900/20 transition-all"
+                      onClick={() => { setDeleteTarget(v); setDeleteError(null) }}>
+                      Delete
+                    </button>
                   </div>
                 </td>
               </tr>
@@ -117,6 +145,37 @@ export default function VendorsClient({ vendors: initial }: { vendors: Vendor[] 
           </tbody>
         </table>
       </div>
+
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-md">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-red-900/40 flex items-center justify-center text-red-400 text-lg flex-shrink-0">⚠</div>
+                <div>
+                  <h2 className="text-base font-semibold text-zinc-100">Delete Vendor?</h2>
+                  <p className="text-xs text-zinc-500 mt-0.5">This cannot be undone</p>
+                </div>
+              </div>
+              <div className="bg-zinc-800/60 rounded-xl p-4 mb-4 text-sm space-y-1">
+                <p><span className="text-zinc-500">Vendor:</span> <span className="text-[#C9A84C] font-mono">{deleteTarget.vendor_id}</span> — <span className="text-zinc-300">{deleteTarget.name}</span></p>
+                <p><span className="text-zinc-500">Country:</span> <span className="text-zinc-300">{deleteTarget.country}</span></p>
+              </div>
+              <p className="text-xs text-red-400 bg-red-900/20 border border-red-900/40 rounded-lg px-3 py-2 mb-4">
+                All purchase orders, line items, and payment records for this vendor will also be permanently deleted.
+              </p>
+              {deleteError && <p className="text-xs text-red-400 mb-3">{deleteError}</p>}
+              <div className="flex gap-2 justify-end">
+                <button className="btn-ghost" onClick={() => { setDeleteTarget(null); setDeleteError(null) }} disabled={deleting}>Cancel</button>
+                <button className="px-4 py-2 rounded-lg bg-red-700 hover:bg-red-600 text-white text-sm font-medium transition-colors disabled:opacity-50"
+                  onClick={deleteVendor} disabled={deleting}>
+                  {deleting ? 'Deleting...' : 'Yes, Delete Everything'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
