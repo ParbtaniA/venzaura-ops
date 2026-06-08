@@ -1,7 +1,5 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 
-// Use edge runtime — no timeout limit, streaming supported
-export const runtime = 'edge'
 export const maxDuration = 60
 
 const PROMPT = [
@@ -44,98 +42,67 @@ const PROMPT = [
   '}',
   '',
   'IMPORTANT: payment.amount_foreign must equal po.grand_total_foreign.',
-  'Category mapping: BG- = Bangles, CH- = Necklaces, ER- = Earrings, NK- = Necklaces, BR- = Bracelets, RN-/RG- = Rings, ST-/SET- = Sets.',
-  'Extract ALL line items including REGULAR PRODUCTS and NET PRICED PRODUCTS. Do not skip any SKU.',
-  'For vendor_id_suggestion: take initials e.g. Manek Ratna = IND-MR, Rajesh Jewels = IND-RJ.',
+  'Category mapping: BG- = Bangles, CH- = Necklaces, ER- = Earrings.',
+  'Extract ALL line items. Do not skip any SKU.',
+  'vendor_id_suggestion: initials e.g. Manek Ratna = IND-MR.',
 ].join('\n')
 
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData()
     const file = formData.get('file') as File | null
-    if (!file) {
-      return new Response(JSON.stringify({ error: 'No file provided' }), {
-        status: 400, headers: { 'Content-Type': 'application/json' }
-      })
-    }
+    if (!file) return NextResponse.json({ error: 'No file provided' }, { status: 400 })
 
     const bytes = await file.arrayBuffer()
-    // Edge runtime uses btoa for base64
-    const uint8 = new Uint8Array(bytes)
-    let binary = ''
-    uint8.forEach(b => binary += String.fromCharCode(b))
-    const base64 = btoa(binary)
+    const base64 = Buffer.from(bytes).toString('base64')
     const mimeType = (file.type && file.type !== 'application/octet-stream') ? file.type : 'application/pdf'
 
-    // Stream response from Claude — keeps connection alive through Netlify's timeout
-    const encoder = new TextEncoder()
-
-    const stream = new ReadableStream({
-      async start(controller) {
-        try {
-          const response = await fetch('https://api.anthropic.com/v1/messages', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-api-key': process.env.ANTHROPIC_API_KEY!,
-              'anthropic-version': '2023-06-01',
-            },
-            body: JSON.stringify({
-              model: 'claude-haiku-4-5-20251001',
-              max_tokens: 8000,
-              messages: [{
-                role: 'user',
-                content: [
-                  { type: 'document', source: { type: 'base64', media_type: mimeType, data: base64 } },
-                  { type: 'text', text: PROMPT },
-                ],
-              }],
-            }),
-          })
-
-          if (!response.ok) {
-            const err = await response.text()
-            controller.enqueue(encoder.encode(JSON.stringify({ error: 'Claude API error: ' + err })))
-            controller.close()
-            return
-          }
-
-          const data = await response.json()
-          const rawText: string = data.content?.[0]?.text || ''
-
-          // Robustly extract JSON
-          let cleaned = rawText.trim()
-          cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim()
-          const jsonStart = cleaned.search(/[{[]/)
-          if (jsonStart > 0) cleaned = cleaned.slice(jsonStart)
-          const firstChar = cleaned[0]
-          if (firstChar === '{' || firstChar === '[') {
-            const lastIdx = cleaned.lastIndexOf(firstChar === '{' ? '}' : ']')
-            if (lastIdx > 0) cleaned = cleaned.slice(0, lastIdx + 1)
-          }
-
-          try {
-            const parsed = JSON.parse(cleaned)
-            controller.enqueue(encoder.encode(JSON.stringify({ success: true, data: parsed })))
-          } catch {
-            controller.enqueue(encoder.encode(JSON.stringify({ error: 'Failed to parse JSON', raw: rawText.substring(0, 500) })))
-          }
-        } catch (e: unknown) {
-          const msg = e instanceof Error ? e.message : String(e)
-          controller.enqueue(encoder.encode(JSON.stringify({ error: msg })))
-        }
-        controller.close()
-      }
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY!,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 8000,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'document', source: { type: 'base64', media_type: mimeType, data: base64 } },
+            { type: 'text', text: PROMPT },
+          ],
+        }],
+      }),
     })
 
-    return new Response(stream, {
-      headers: { 'Content-Type': 'application/json' }
-    })
+    if (!response.ok) {
+      const err = await response.text()
+      return NextResponse.json({ error: 'Claude API error: ' + err }, { status: 500 })
+    }
 
+    const claudeData = await response.json()
+    const rawText: string = claudeData.content?.[0]?.text || ''
+
+    let cleaned = rawText.trim()
+    cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim()
+    const jsonStart = cleaned.search(/[{[]/)
+    if (jsonStart > 0) cleaned = cleaned.slice(jsonStart)
+    const firstChar = cleaned[0]
+    if (firstChar === '{' || firstChar === '[') {
+      const lastIdx = cleaned.lastIndexOf(firstChar === '{' ? '}' : ']')
+      if (lastIdx > 0) cleaned = cleaned.slice(0, lastIdx + 1)
+    }
+
+    try {
+      const parsed = JSON.parse(cleaned)
+      return NextResponse.json({ success: true, data: parsed })
+    } catch {
+      return NextResponse.json({ error: 'Failed to parse JSON', raw: rawText.substring(0, 500) }, { status: 500 })
+    }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
-    return new Response(JSON.stringify({ error: msg }), {
-      status: 500, headers: { 'Content-Type': 'application/json' }
-    })
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 }

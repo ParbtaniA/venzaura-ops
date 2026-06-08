@@ -93,24 +93,36 @@ export default function InvoiceUploadClient() {
     setStage('parsing')
     setParseError(null)
 
-    const fd = new FormData()
-    fd.append('file', file)
+    // Convert to base64 and call the Netlify background function
+    // (avoids the 10s serverless timeout on the Next.js API route)
+    const reader = new FileReader()
+    reader.onload = async () => {
+      try {
+        const dataUrl = reader.result as string
+        const base64 = dataUrl.split(',')[1]
+        const mimeType = file.type || 'application/pdf'
 
-    try {
-      const res = await fetch('/api/invoice-parse', { method: 'POST', body: fd })
-      const json = await res.json()
-      if (!res.ok || !json.success) {
-        setParseError(json.error || 'Parse failed')
+        const res = await fetch('/.netlify/functions/parse-invoice', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ base64, mimeType }),
+        })
+        const json = await res.json()
+        if (!res.ok || !json.success) {
+          setParseError(json.error || 'Parse failed')
+          setStage('upload')
+          return
+        }
+        setParsed(json.data)
+        setEditedItems(json.data.line_items)
+        setStage('review')
+      } catch (e: unknown) {
+        setParseError(e instanceof Error ? e.message : String(e))
         setStage('upload')
-        return
       }
-      setParsed(json.data)
-      setEditedItems(json.data.line_items)
-      setStage('review')
-    } catch (e: unknown) {
-      setParseError(e instanceof Error ? e.message : String(e))
-      setStage('upload')
     }
+    reader.onerror = () => { setParseError('Failed to read file'); setStage('upload') }
+    reader.readAsDataURL(file)
   }
 
   function onDrop(e: React.DragEvent) {

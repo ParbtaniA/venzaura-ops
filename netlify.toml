@@ -6,13 +6,5 @@
   NEXT_TELEMETRY_DISABLED = "1"
   NODE_VERSION = "20"
 
-[functions]
-  # Extend timeout for AI-powered API routes (max on free tier: 26s)
-  included_files = ["**"]
-
 [[plugins]]
   package = "@netlify/plugin-nextjs"
-
-# Set longer timeout for the invoice parse function specifically
-[functions."api/invoice-parse"]
-  timeout = 26
