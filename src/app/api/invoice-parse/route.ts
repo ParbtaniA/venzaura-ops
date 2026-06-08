@@ -35,7 +35,7 @@ const PROMPT = [
   '      "section": "REGULAR PRODUCTS|NET PRICED PRODUCTS|OTHER"',
   '    }',
   '  ],',
-  '  "payment": { "amount_foreign": 0, "currency": "INR", "notes": "string" },',
+  '  "payment": { "amount_foreign": USE_GRAND_TOTAL_FROM_PO, "currency": "INR", "notes": "string" },',
   '  "parsing_notes": "any ambiguities or missing data"',
   '}',
   '',
@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 4000,
+        max_tokens: 8000,
         messages: [{
           role: 'user',
           content: [
@@ -87,10 +87,20 @@ export async function POST(req: NextRequest) {
     const claudeData = await response.json()
     const rawText: string = claudeData.content?.[0]?.text || ''
 
-    const cleaned = rawText
-      .replace(/^```(?:json)?\s*/m, '')
-      .replace(/\s*```\s*$/m, '')
-      .trim()
+    // Robustly extract JSON from Claude's response
+    let cleaned = rawText.trim()
+    // Strip markdown code fences if present
+    cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim()
+    // If there's preamble text before the JSON object, find where JSON starts
+    const jsonStart = cleaned.search(/[{[]/)
+    if (jsonStart > 0) cleaned = cleaned.slice(jsonStart)
+    // Trim any trailing text after the closing brace/bracket
+    const firstChar = cleaned[0]
+    if (firstChar === '{' || firstChar === '[') {
+      const lastChar = firstChar === '{' ? '}' : ']'
+      const lastIdx = cleaned.lastIndexOf(lastChar)
+      if (lastIdx > 0) cleaned = cleaned.slice(0, lastIdx + 1)
+    }
 
     let parsed
     try {
