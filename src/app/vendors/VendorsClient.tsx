@@ -20,14 +20,25 @@ export default function VendorsClient({ vendors: initial }: { vendors: Vendor[] 
     v.country.toLowerCase().includes(search.toLowerCase())
   )
 
+  const [error, setError] = useState<string | null>(null)
+
   async function save() {
     setSaving(true)
+    setError(null)
     try {
-      if (editing.id) {
-        const { data } = await supabase.from('vendors').update(editing).eq('id', editing.id).select().single()
+      if (!editing.vendor_id || !editing.name || !editing.country) {
+        setError('Vendor ID, Name and Country are required.')
+        return
+      }
+      // Strip read-only generated fields before sending
+      const { id, created_at, updated_at, ...payload } = editing as Vendor
+      if (id) {
+        const { data, error: err } = await supabase.from('vendors').update(payload).eq('id', id).select().single()
+        if (err) { setError(err.message); return }
         if (data) setVendors(vs => vs.map(v => v.id === data.id ? data : v))
       } else {
-        const { data } = await supabase.from('vendors').insert(editing).select().single()
+        const { data, error: err } = await supabase.from('vendors').insert(payload).select().single()
+        if (err) { setError(err.message); return }
         if (data) setVendors(vs => [data, ...vs])
       }
       setShowForm(false)
@@ -137,8 +148,9 @@ export default function VendorsClient({ vendors: initial }: { vendors: Vendor[] 
               <div className="col-span-2"><label className="label">Bank / Wire Details</label><textarea className="input" rows={2} value={editing.bank_details || ''} onChange={F('bank_details')} /></div>
               <div className="col-span-2"><label className="label">Notes</label><textarea className="input" rows={2} value={editing.notes || ''} onChange={F('notes')} /></div>
             </div>
+            {error && <div className="mx-5 mb-2 bg-red-900/30 border border-red-800/50 rounded-lg px-3 py-2 text-sm text-red-400">{error}</div>}
             <div className="flex justify-end gap-2 p-5 border-t border-zinc-800">
-              <button className="btn-ghost" onClick={() => setShowForm(false)}>Cancel</button>
+              <button className="btn-ghost" onClick={() => { setShowForm(false); setError(null) }}>Cancel</button>
               <button className="btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving...' : 'Save Vendor'}</button>
             </div>
           </div>

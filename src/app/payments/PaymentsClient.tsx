@@ -17,18 +17,27 @@ export default function PaymentsClient({ payments: initial, vendors, pos }: {
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<Partial<Payment>>(EMPTY)
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const totalOut = payments.reduce((s, p) => s + (p.total_out_usd || 0), 0)
   const pendingQBO = payments.filter(p => !p.logged_in_qbo).length
 
   async function save() {
     setSaving(true)
+    setError(null)
     try {
-      if (editing.id) {
-        const { data } = await supabase.from('payments').update(editing).eq('id', editing.id).select('*, vendor:vendors(name,vendor_id), purchase_order:purchase_orders(po_number)').single()
+      if (!editing.payment_id || !editing.payment_date || !editing.vendor_id || !editing.payment_method || !editing.amount_foreign || !editing.fx_rate) {
+        setError('Payment ID, Date, Vendor, Method, Amount and FX Rate are required.')
+        return
+      }
+      const { id, created_at, updated_at, amount_usd, total_out_usd, vendor, purchase_order, ...payload } = editing as Payment & { vendor?: unknown; purchase_order?: unknown }
+      if (id) {
+        const { data, error: err } = await supabase.from('payments').update(payload).eq('id', id).select('*, vendor:vendors(name,vendor_id), purchase_order:purchase_orders(po_number)').single()
+        if (err) { setError(err.message); return }
         if (data) setPayments(ps => ps.map(p => p.id === data.id ? data : p))
       } else {
-        const { data } = await supabase.from('payments').insert(editing).select('*, vendor:vendors(name,vendor_id), purchase_order:purchase_orders(po_number)').single()
+        const { data, error: err } = await supabase.from('payments').insert(payload).select('*, vendor:vendors(name,vendor_id), purchase_order:purchase_orders(po_number)').single()
+        if (err) { setError(err.message); return }
         if (data) setPayments(ps => [data, ...ps])
       }
       setShowForm(false); setEditing(EMPTY)
@@ -157,8 +166,9 @@ export default function PaymentsClient({ payments: initial, vendors, pos }: {
               <div className="col-span-2"><label className="label">Reference / Confirmation #</label><input className="input" value={editing.reference_number || ''} onChange={F('reference_number')} /></div>
               <div className="col-span-2"><label className="label">Notes</label><textarea className="input" rows={2} value={editing.notes || ''} onChange={F('notes')} /></div>
             </div>
+            {error && <div className="mx-5 mb-2 bg-red-900/30 border border-red-800/50 rounded-lg px-3 py-2 text-sm text-red-400">{error}</div>}
             <div className="flex justify-end gap-2 p-5 border-t border-zinc-800">
-              <button className="btn-ghost" onClick={() => setShowForm(false)}>Cancel</button>
+              <button className="btn-ghost" onClick={() => { setShowForm(false); setError(null) }}>Cancel</button>
               <button className="btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving...' : 'Save Payment'}</button>
             </div>
           </div>

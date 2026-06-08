@@ -17,6 +17,7 @@ export default function LineItemsClient({ items: initial, pos, vendors }: {
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<Partial<LineItem>>(EMPTY)
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [catFilter, setCatFilter] = useState<Category | 'All'>('All')
   const [search, setSearch] = useState('')
 
@@ -33,12 +34,20 @@ export default function LineItemsClient({ items: initial, pos, vendors }: {
 
   async function save() {
     setSaving(true)
+    setError(null)
     try {
-      if (editing.id) {
-        const { data } = await supabase.from('line_items').update(editing).eq('id', editing.id).select('*, vendor:vendors(name,vendor_id), purchase_order:purchase_orders(po_number)').single()
+      if (!editing.line_id || !editing.sku || !editing.product_name || !editing.category) {
+        setError('Line ID, SKU, Product Name and Category are required.')
+        return
+      }
+      const { id, created_at, updated_at, unit_cost_usd, landed_cost_per_unit, total_landed_cost, margin_pct, ...payload } = editing as LineItem & Record<string, unknown>
+      if (id) {
+        const { data, error: err } = await supabase.from('line_items').update(payload).eq('id', id as string).select('*, vendor:vendors(name,vendor_id), purchase_order:purchase_orders(po_number)').single()
+        if (err) { setError(err.message); return }
         if (data) setItems(its => its.map(i => i.id === data.id ? data : i))
       } else {
-        const { data } = await supabase.from('line_items').insert(editing).select('*, vendor:vendors(name,vendor_id), purchase_order:purchase_orders(po_number)').single()
+        const { data, error: err } = await supabase.from('line_items').insert(payload).select('*, vendor:vendors(name,vendor_id), purchase_order:purchase_orders(po_number)').single()
+        if (err) { setError(err.message); return }
         if (data) setItems(its => [data, ...its])
       }
       setShowForm(false); setEditing(EMPTY)

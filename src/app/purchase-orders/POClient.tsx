@@ -23,6 +23,7 @@ export default function POClient({ pos: initial, vendors }: {
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<Partial<PurchaseOrder>>(EMPTY)
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<POStatus | 'All'>('All')
 
   const filtered = statusFilter === 'All' ? pos : pos.filter(p => p.status === statusFilter)
@@ -30,12 +31,20 @@ export default function POClient({ pos: initial, vendors }: {
 
   async function save() {
     setSaving(true)
+    setError(null)
     try {
-      if (editing.id) {
-        const { data } = await supabase.from('purchase_orders').update(editing).eq('id', editing.id).select('*, vendor:vendors(name,vendor_id)').single()
+      if (!editing.po_number || !editing.order_date || !editing.vendor_id) {
+        setError('PO Number, Date and Vendor are required.')
+        return
+      }
+      const { id, created_at, updated_at, subtotal_usd, landed_cost_usd, vendor, ...payload } = editing as PurchaseOrder & { vendor?: unknown }
+      if (id) {
+        const { data, error: err } = await supabase.from('purchase_orders').update(payload).eq('id', id).select('*, vendor:vendors(name,vendor_id)').single()
+        if (err) { setError(err.message); return }
         if (data) setPos(ps => ps.map(p => p.id === data.id ? data : p))
       } else {
-        const { data } = await supabase.from('purchase_orders').insert(editing).select('*, vendor:vendors(name,vendor_id)').single()
+        const { data, error: err } = await supabase.from('purchase_orders').insert(payload).select('*, vendor:vendors(name,vendor_id)').single()
+        if (err) { setError(err.message); return }
         if (data) setPos(ps => [data, ...ps])
       }
       setShowForm(false); setEditing(EMPTY)
