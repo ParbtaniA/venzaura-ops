@@ -25,13 +25,15 @@ export default function POClient({ pos: initial, vendors }: {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<POStatus | 'All'>('All')
+  const [deleteTarget, setDeleteTarget] = useState<PurchaseOrder | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const filtered = statusFilter === 'All' ? pos : pos.filter(p => p.status === statusFilter)
   const totalLanded = pos.filter(p => p.status !== 'Cancelled').reduce((s, p) => s + (p.landed_cost_usd || 0), 0)
 
   async function save() {
-    setSaving(true)
-    setError(null)
+    setSaving(true); setError(null)
     try {
       if (!editing.po_number || !editing.order_date || !editing.vendor_id) {
         setError('PO Number, Date and Vendor are required.')
@@ -49,6 +51,25 @@ export default function POClient({ pos: initial, vendors }: {
       }
       setShowForm(false); setEditing(EMPTY)
     } finally { setSaving(false) }
+  }
+
+  async function deletePO() {
+    if (!deleteTarget) return
+    setDeleting(true); setDeleteError(null)
+    try {
+      // Delete child records first (line_items and payments reference po_id)
+      const { error: liErr } = await supabase.from('line_items').delete().eq('po_id', deleteTarget.id)
+      if (liErr) { setDeleteError('Failed to delete line items: ' + liErr.message); return }
+
+      const { error: payErr } = await supabase.from('payments').delete().eq('po_id', deleteTarget.id)
+      if (payErr) { setDeleteError('Failed to delete payments: ' + payErr.message); return }
+
+      const { error: poErr } = await supabase.from('purchase_orders').delete().eq('id', deleteTarget.id)
+      if (poErr) { setDeleteError('Failed to delete PO: ' + poErr.message); return }
+
+      setPos(ps => ps.filter(p => p.id !== deleteTarget.id))
+      setDeleteTarget(null)
+    } finally { setDeleting(false) }
   }
 
   const F = (k: keyof PurchaseOrder) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
@@ -111,7 +132,17 @@ export default function POClient({ pos: initial, vendors }: {
                 <td className="td text-xs text-zinc-400">{p.expected_arrival || '—'}</td>
                 <td className="td"><span className={`badge ${statusColor(p.status)}`}>{p.status}</span></td>
                 <td className="td">
-                  <button className="btn-ghost text-xs py-1 px-2" onClick={() => { setEditing(p); setShowForm(true) }}>Edit</button>
+                  <div className="flex gap-1">
+                    <button className="btn-ghost text-xs py-1 px-2"
+                      onClick={() => { setEditing(p); setError(null); setShowForm(true) }}>
+                      Edit
+                    </button>
+                    <button
+                      className="text-xs py-1 px-2 rounded-lg text-red-500 hover:text-red-400 hover:bg-red-900/20 transition-all"
+                      onClick={() => { setDeleteTarget(p); setDeleteError(null) }}>
+                      Delete
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -119,6 +150,52 @@ export default function POClient({ pos: initial, vendors }: {
         </table>
       </div>
 
+      {/* ── DELETE CONFIRMATION ── */}
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-md">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-red-900/40 flex items-center justify-center text-red-400 text-lg flex-shrink-0">⚠</div>
+                <div>
+                  <h2 className="text-base font-semibold text-zinc-100">Delete Purchase Order?</h2>
+                  <p className="text-xs text-zinc-500 mt-0.5">This cannot be undone</p>
+                </div>
+              </div>
+
+              <div className="bg-zinc-800/60 rounded-xl p-4 mb-4 text-sm space-y-1">
+                <p><span className="text-zinc-500">PO:</span> <span className="text-[#C9A84C] font-mono">{deleteTarget.po_number}</span></p>
+                <p><span className="text-zinc-500">Invoice:</span> <span className="text-zinc-300">{deleteTarget.invoice_number || '—'}</span></p>
+                <p><span className="text-zinc-500">Vendor:</span> <span className="text-zinc-300">{(deleteTarget as any).vendor?.name || '—'}</span></p>
+                <p><span className="text-zinc-500">Landed cost:</span> <span className="text-zinc-300">{fmt(deleteTarget.landed_cost_usd)}</span></p>
+              </div>
+
+              <p className="text-xs text-red-400 bg-red-900/20 border border-red-900/40 rounded-lg px-3 py-2 mb-4">
+                All line items and payment records linked to this PO will also be permanently deleted.
+              </p>
+
+              {deleteError && (
+                <p className="text-xs text-red-400 mb-3">{deleteError}</p>
+              )}
+
+              <div className="flex gap-2 justify-end">
+                <button className="btn-ghost" onClick={() => { setDeleteTarget(null); setDeleteError(null) }}
+                  disabled={deleting}>
+                  Cancel
+                </button>
+                <button
+                  className="px-4 py-2 rounded-lg bg-red-700 hover:bg-red-600 text-white text-sm font-medium transition-colors disabled:opacity-50"
+                  onClick={deletePO}
+                  disabled={deleting}>
+                  {deleting ? 'Deleting...' : 'Yes, Delete Everything'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── EDIT / NEW FORM ── */}
       {showForm && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
           <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -157,6 +234,7 @@ export default function POClient({ pos: initial, vendors }: {
               <div className="col-span-2"><label className="label">Items Summary</label><textarea className="input" rows={2} placeholder="Necklace sets x20, Earring sets x30" value={editing.items_summary || ''} onChange={F('items_summary')} /></div>
               <div className="col-span-2"><label className="label">Notes</label><textarea className="input" rows={2} value={editing.notes || ''} onChange={F('notes')} /></div>
             </div>
+            {error && <div className="mx-5 mb-2 bg-red-900/30 border border-red-800/50 rounded-lg px-3 py-2 text-sm text-red-400">{error}</div>}
             <div className="flex justify-end gap-2 p-5 border-t border-zinc-800">
               <button className="btn-ghost" onClick={() => setShowForm(false)}>Cancel</button>
               <button className="btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving...' : 'Save PO'}</button>
