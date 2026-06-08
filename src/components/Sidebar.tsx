@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation'
 
 const nav = [
   { href: '/', icon: '◈', label: 'Dashboard' },
+  { href: '/upload', icon: '⊕', label: 'Import Invoice' },
   { href: '/vendors', icon: '⊞', label: 'Vendors' },
   { href: '/purchase-orders', icon: '⊟', label: 'Purchase Orders' },
   { href: '/line-items', icon: '≡', label: 'Line Items / SKUs' },
