@@ -78,7 +78,7 @@ export default function PaymentsClient({ payments: initial, vendors, pos }: {
 
       {pendingQBO > 0 && (
         <div className="bg-amber-900/20 border border-amber-800/40 rounded-xl p-3 mb-4">
-          <p className="text-sm text-amber-400">{pendingQBO} payment{pendingQBO > 1 ? 's' : ''} not yet logged in QuickBooks — check the QBO column below</p>
+          <p className="text-sm text-amber-400">{pendingQBO} payment{pendingQBO > 1 ? 's' : ''} not yet reconciled — check the Reconciled column below</p>
         </div>
       )}
 
@@ -97,7 +97,7 @@ export default function PaymentsClient({ payments: initial, vendors, pos }: {
               <th className="th">USD Amt</th>
               <th className="th">Wire Fee</th>
               <th className="th">Total Out</th>
-              <th className="th">QBO</th>
+              <th className="th">Reconciled</th>
               <th className="th">Actions</th>
             </tr>
           </thead>
